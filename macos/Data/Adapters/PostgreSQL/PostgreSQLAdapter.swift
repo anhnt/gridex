@@ -865,6 +865,22 @@ final class PostgreSQLAdapter: DatabaseAdapter, SchemaInspectable, @unchecked Se
                 return .uuid(try cell.decode(UUID.self))
             case .json, .jsonb:
                 return .json(try cell.decode(String.self))
+            case .textArray, .varcharArray, .bpcharArray, .nameArray:
+                return .array(try cell.decode([String].self).map { .string($0) })
+            case .boolArray:
+                return .array(try cell.decode([Bool].self).map { .boolean($0) })
+            case .int2Array:
+                return .array(try cell.decode([Int16].self).map { .integer(Int64($0)) })
+            case .int4Array:
+                return .array(try cell.decode([Int32].self).map { .integer(Int64($0)) })
+            case .int8Array:
+                return .array(try cell.decode([Int64].self).map { .integer($0) })
+            case .float4Array:
+                return .array(try cell.decode([Float].self).map { .double(Double($0)) })
+            case .float8Array:
+                return .array(try cell.decode([Double].self).map { .double($0) })
+            case .uuidArray:
+                return .array(try cell.decode([UUID].self).map { .uuid($0) })
             default:
                 // Try String decoding, but validate it's not binary garbage
                 if let s = try? cell.decode(String.self),

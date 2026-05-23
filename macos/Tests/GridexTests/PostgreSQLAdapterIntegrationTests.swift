@@ -307,6 +307,52 @@ final class PostgreSQLAdapterIntegrationTests: XCTestCase {
         try await adapter.disconnect()
     }
 
+    // MARK: - Issue #75 - PostgreSQL array cells must not render as NULL
+
+    func test_execute_decodesTextArrayCells() async throws {
+        try skipIfNoServer(port: 55434)
+
+        let cfg = makeBaseConfig(host: "127.0.0.1", port: 55434, sslMode: .disabled)
+        let adapter = PostgreSQLAdapter()
+        try await adapter.connect(config: cfg, password: nil)
+
+        let table = "gridex_array_test_\(UUID().uuidString.prefix(8).lowercased())"
+        do {
+            _ = try await adapter.executeRaw(sql: "CREATE TEMP TABLE \(table) (id int, reasons text[])")
+            _ = try await adapter.executeRaw(sql: """
+                INSERT INTO \(table) VALUES
+                (1, ARRAY['because', 'why']::text[]),
+                (2, NULL),
+                (3, ARRAY[]::text[])
+                """)
+
+            let result = try await adapter.executeRaw(sql: "SELECT reasons FROM \(table) ORDER BY id")
+
+            XCTAssertEqual(result.rows.count, 3)
+            XCTAssertEqual(result.columns.first?.dataType, "TEXT[]")
+
+            guard case .array(let reasons) = result.rows[0][0] else {
+                XCTFail("Expected non-null text[] to decode as RowValue.array")
+                try? await adapter.disconnect()
+                return
+            }
+            XCTAssertEqual(reasons, [.string("because"), .string("why")])
+            XCTAssertEqual(result.rows[1][0], .null)
+
+            guard case .array(let emptyReasons) = result.rows[2][0] else {
+                XCTFail("Expected empty text[] to decode as an empty RowValue.array")
+                try? await adapter.disconnect()
+                return
+            }
+            XCTAssertTrue(emptyReasons.isEmpty)
+        } catch {
+            try? await adapter.disconnect()
+            throw error
+        }
+
+        try await adapter.disconnect()
+    }
+
     // MARK: - Issue #49 — Explain button server-side regression
 
     // The query editor button used to send "EXPLAIN QUERY PLAN <sql>" to every

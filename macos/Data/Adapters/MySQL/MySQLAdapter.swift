@@ -77,7 +77,7 @@ final class MySQLAdapter: DatabaseAdapter, SchemaInspectable, @unchecked Sendabl
             throw GridexError.connectionFailed(underlying: error)
         }
 
-        let tlsConfig: TLSConfiguration? = config.sslEnabled ? .makeClientConfiguration() : nil
+        let tlsConfig = try Self.makeTLSConfig(for: config.effectiveSSLMode, config: config)
 
         do {
             let conn = try await MySQLConnection.connect(
@@ -96,6 +96,38 @@ final class MySQLAdapter: DatabaseAdapter, SchemaInspectable, @unchecked Sendabl
         } catch {
             throw GridexError.connectionFailed(underlying: error)
         }
+    }
+
+    private static func makeTLSConfig(
+        for mode: SSLMode,
+        config: ConnectionConfig
+    ) throws -> TLSConfiguration? {
+        if mode == .disabled { return nil }
+
+        var tls = TLSConfiguration.makeClientConfiguration()
+
+        // mTLS client cert (e.g. Teleport).
+        if let certPath = config.sslCertPath, !certPath.isEmpty,
+           let keyPath = config.sslKeyPath, !keyPath.isEmpty {
+            let cert = try NIOSSLCertificate.fromPEMFile(certPath)
+            let key = try NIOSSLPrivateKey(file: keyPath, format: .pem)
+            tls.certificateChain = cert.map { .certificate($0) }
+            tls.privateKey = .privateKey(key)
+        }
+
+        // MySQL CLI semantics: PREFERRED/REQUIRED encrypt without verifying;
+        // VERIFY_CA verifies the chain; VERIFY_IDENTITY also verifies hostname.
+        switch mode {
+        case .verifyCA, .verifyIdentity:
+            if let caPath = config.sslCACertPath, !caPath.isEmpty {
+                tls.trustRoots = .file(caPath)
+            }
+            tls.certificateVerification = (mode == .verifyIdentity) ? .fullVerification : .noHostnameVerification
+        default:
+            tls.certificateVerification = .none
+        }
+
+        return tls
     }
 
     func testConnection(config: ConnectionConfig, password: String?) async throws -> Bool {

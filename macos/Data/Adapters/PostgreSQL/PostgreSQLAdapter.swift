@@ -417,15 +417,31 @@ final class PostgreSQLAdapter: DatabaseAdapter, SchemaInspectable, @unchecked Se
 
     private func listAllConstraints(table: String, schema: String) async throws -> (foreignKeys: [ForeignKeyInfo], checks: [(String, String)]) {
         let result = try await executeParameterized(sql: """
+            WITH ref_cols AS (
+                SELECT DISTINCT a.attrelid, a.attnum, a.attname
+                FROM pg_attribute a
+                JOIN pg_constraint con ON con.confrelid = a.attrelid AND a.attnum = ANY(con.confkey)
+                JOIN pg_class cls ON cls.oid = con.conrelid
+                JOIN pg_namespace ns ON ns.oid = cls.relnamespace
+                WHERE cls.relname = $1 AND ns.nspname = $2
+            ),
+            local_cols AS (
+                SELECT DISTINCT a.attrelid, a.attnum, a.attname
+                FROM pg_attribute a
+                JOIN pg_constraint con ON con.conrelid = a.attrelid AND a.attnum = ANY(con.conkey)
+                JOIN pg_class cls ON cls.oid = con.conrelid
+                JOIN pg_namespace ns ON ns.oid = cls.relnamespace
+                WHERE cls.relname = $1 AND ns.nspname = $2
+            )
             SELECT con.contype,
                    con.conname,
                    con.conkey,
                    pg_get_constraintdef(con.oid),
                    ref_cls.relname,
-                   (SELECT string_agg(a.attname, ',' ORDER BY array_position(con.confkey, a.attnum))
-                    FROM pg_attribute a WHERE a.attrelid = con.confrelid AND a.attnum = ANY(con.confkey)),
-                   (SELECT string_agg(a.attname, ',' ORDER BY array_position(con.conkey, a.attnum))
-                    FROM pg_attribute a WHERE a.attrelid = con.conrelid AND a.attnum = ANY(con.conkey)),
+                   (SELECT string_agg(rc.attname, ',' ORDER BY array_position(con.confkey, rc.attnum))
+                    FROM ref_cols rc WHERE rc.attrelid = con.confrelid),
+                   (SELECT string_agg(lc.attname, ',' ORDER BY array_position(con.conkey, lc.attnum))
+                    FROM local_cols lc WHERE lc.attrelid = con.conrelid),
                    con.confdeltype,
                    con.confupdtype
             FROM pg_constraint con

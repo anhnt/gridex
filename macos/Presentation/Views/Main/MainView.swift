@@ -1072,7 +1072,6 @@ struct WorkspaceView: View {
                     if let activeId = appState.activeTabId,
                        let tab = appState.tabs.first(where: { $0.id == activeId }) {
                         tabContent(for: tab)
-                            .id(tab.id)
                     } else {
                         ConnectedWelcomeView()
                     }

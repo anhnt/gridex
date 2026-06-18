@@ -62,6 +62,9 @@ final class AppState: ObservableObject {
     @Published var activeAdapter: (any DatabaseAdapter)?
     @Published var activeConfig: ConnectionConfig?
     @Published var sidebarItems: [SidebarItem] = []
+    /// Adapter stored for deferred Phase 2 sidebar load (views/functions/procedures).
+    private var sidebarPendingPhase2Adapter: (any DatabaseAdapter)?
+    private var sidebarPhase2TableItems: [SidebarItem] = []
     @Published var connectionTitle: String = "Gridex"
     @Published var isConnecting: Bool = false
     @Published var connectionError: String?
@@ -269,8 +272,10 @@ final class AppState: ObservableObject {
             statusConnection = config.displayHost
             isConnecting = false
 
-            // Load sidebar immediately (most important for user)
-            await loadSidebar(config: config, adapter: connection.adapter)
+            // Load sidebar off the main actor so UI stays responsive
+            Task { [config, adapter = connection.adapter] in
+                await self.loadSidebar(config: config, adapter: adapter)
+            }
 
             // Fetch metadata in background — all parallel
             Task { [weak self] in
@@ -333,51 +338,62 @@ final class AppState: ObservableObject {
         }
     }
 
-    func loadSidebar(config: ConnectionConfig, adapter: any DatabaseAdapter) async {
+    nonisolated func loadSidebar(config: ConnectionConfig, adapter: any DatabaseAdapter) async {
         do {
-            // Run all queries in parallel instead of sequential
-            async let tablesTask = adapter.listTables(schema: nil)
+            // Phase 1: Query tables only — publish immediately and return
+            let tables = try await adapter.listTables(schema: nil)
+            let tableItems = tables.map { t in
+                SidebarItem(title: t.name, type: .table(t.name), iconName: "")
+            }
+            await MainActor.run { [adapter, tableItems] in
+                self.sidebarItems = [SidebarItem(title: "Tables", type: .group("tables"), iconName: "", children: tableItems)]
+                self.sidebarPendingPhase2Adapter = adapter
+                self.sidebarPhase2TableItems = tableItems
+            }
+        } catch {
+            print("Sidebar load error: \(error)")
+        }
+    }
+
+    func triggerSidebarPhase2IfNeeded() {
+        guard let adapter = sidebarPendingPhase2Adapter else { return }
+        sidebarPendingPhase2Adapter = nil
+        let tableItems = sidebarPhase2TableItems
+
+        Task { [adapter, tableItems] in
             async let viewsTask = adapter.listViews(schema: nil)
             async let functionsTask = adapter.listFunctions(schema: nil)
             async let proceduresTask = adapter.listProcedures(schema: nil)
 
-            let tables = try await tablesTask
-            let views = try await viewsTask
-            let functions = try await functionsTask
+            let views = (try? await viewsTask) ?? []
+            let functions = (try? await functionsTask) ?? []
             let procedures = (try? await proceduresTask) ?? []
 
-            let tableItems = tables.map { t in
-                SidebarItem(title: t.name, type: .table(t.name), iconName: "")
-            }
-            let viewItems = views.map { v in
-                SidebarItem(title: v.name, type: .view(v.name), iconName: "")
-            }
-            let functionItems = functions.map { f in
-                SidebarItem(title: f, type: .function(f), iconName: "")
-            }
-            let procedureItems = procedures.map { p in
-                SidebarItem(title: p, type: .procedure(p), iconName: "")
-            }
+            guard !functions.isEmpty || !views.isEmpty || !procedures.isEmpty else { return }
 
-            var items: [SidebarItem] = []
-
-            if !functionItems.isEmpty {
-                items.append(SidebarItem(title: "Functions", type: .group("functions"), iconName: "", children: functionItems))
+            await MainActor.run { [tableItems, views, functions, procedures] in
+                var items: [SidebarItem] = []
+                if !functions.isEmpty {
+                    let functionItems = functions.map { f in
+                        SidebarItem(title: f, type: .function(f), iconName: "")
+                    }
+                    items.append(SidebarItem(title: "Functions", type: .group("functions"), iconName: "", children: functionItems))
+                }
+                if !procedures.isEmpty {
+                    let procedureItems = procedures.map { p in
+                        SidebarItem(title: p, type: .procedure(p), iconName: "")
+                    }
+                    items.append(SidebarItem(title: "Procedures", type: .group("procedures"), iconName: "", children: procedureItems))
+                }
+                items.append(SidebarItem(title: "Tables", type: .group("tables"), iconName: "", children: tableItems))
+                if !views.isEmpty {
+                    let viewItems = views.map { v in
+                        SidebarItem(title: v.name, type: .view(v.name), iconName: "")
+                    }
+                    items.append(SidebarItem(title: "Views", type: .group("views"), iconName: "", children: viewItems))
+                }
+                self.sidebarItems = items
             }
-
-            if !procedureItems.isEmpty {
-                items.append(SidebarItem(title: "Procedures", type: .group("procedures"), iconName: "", children: procedureItems))
-            }
-
-            items.append(SidebarItem(title: "Tables", type: .group("tables"), iconName: "", children: tableItems))
-
-            if !viewItems.isEmpty {
-                items.append(SidebarItem(title: "Views", type: .group("views"), iconName: "", children: viewItems))
-            }
-
-            sidebarItems = items
-        } catch {
-            print("Sidebar load error: \(error)")
         }
     }
 
@@ -408,6 +424,7 @@ final class AppState: ObservableObject {
         tabs.append(tab)
         activeTabId = tab.id
         if let db = currentDatabaseName { ensureTabGroup(for: db) }
+        triggerSidebarPhase2IfNeeded()
     }
 
     func openTableStructure(name: String, schema: String?) {
@@ -651,9 +668,11 @@ final class AppState: ObservableObject {
 
             ensureTabGroup(for: databaseName)
 
-            // Reload sidebar for the new database
+            // Reload sidebar for the new database (non-blocking)
             if let cfg = activeConfig, let adp = activeAdapter {
-                await loadSidebar(config: cfg, adapter: adp)
+                Task { [cfg, adp] in
+                    await self.loadSidebar(config: cfg, adapter: adp)
+                }
             }
         } catch {
             print("Switch database failed: \(error)")

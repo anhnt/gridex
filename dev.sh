@@ -4,7 +4,7 @@
 
 set -e
 
-APP_NAME="DataBridge"
+APP_NAME="Gridex"
 BUILD_DIR=".build/debug"
 APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
 
@@ -21,15 +21,38 @@ build_app_bundle() {
     cp "$BUILD_DIR/$APP_NAME" "$macos/$APP_NAME"
 
     # Copy Info.plist
-    cp "DataBridge/Resources/Info.plist" "$contents/Info.plist"
+    cp "macos/Resources/Info.plist" "$contents/Info.plist"
 
     # Copy icon
-    cp "DataBridge/Resources/AppIcon.icns" "$resources/AppIcon.icns"
+    cp "macos/Resources/AppIcon.icns" "$resources/AppIcon.icns"
 
     # Copy SPM-generated resources bundle (Assets.xcassets, entitlements)
     if [ -d "$BUILD_DIR/${APP_NAME}_${APP_NAME}.bundle" ]; then
         cp -R "$BUILD_DIR/${APP_NAME}_${APP_NAME}.bundle" "$resources/"
     fi
+
+    # Embed frameworks (Sparkle, etc.)
+    local frameworks="$contents/Frameworks"
+    mkdir -p "$frameworks"
+
+    # Copy Sparkle framework (SPM puts it in arch-specific build dir)
+    local SPARKLE_DIR=""
+    if [ -d "$BUILD_DIR/Sparkle.framework" ]; then
+        SPARKLE_DIR="$BUILD_DIR/Sparkle.framework"
+    elif [ -d ".build/arm64-apple-macosx/debug/Sparkle.framework" ]; then
+        SPARKLE_DIR=".build/arm64-apple-macosx/debug/Sparkle.framework"
+    elif [ -d ".build/arm64-apple-macosx/debug/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework" ]; then
+        SPARKLE_DIR=".build/arm64-apple-macosx/debug/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
+    fi
+    if [ -n "$SPARKLE_DIR" ]; then
+        cp -R "$SPARKLE_DIR" "$frameworks/"
+    fi
+
+    # Add @rpath so dyld can find frameworks at @executable_path/../Frameworks
+    install_name_tool -add_rpath "@executable_path/../Frameworks" "$macos/$APP_NAME" 2>/dev/null || true
+
+    # Ad-hoc sign the bundle so macOS allows it to launch
+    codesign --force --deep --sign - "$APP_BUNDLE"
 
     # Refresh the Finder icon cache for this bundle
     touch "$APP_BUNDLE"
@@ -65,7 +88,7 @@ build_and_run
 LAST_HASH=""
 while true; do
     sleep 2
-    CURRENT_HASH=$(find DataBridge -name "*.swift" -newer "$BUILD_DIR/$APP_NAME" 2>/dev/null | head -1)
+    CURRENT_HASH=$(find macos -name "*.swift" -newer "$BUILD_DIR/$APP_NAME" 2>/dev/null | head -1)
     if [ -n "$CURRENT_HASH" ]; then
         echo ""
         echo "📝 Change detected..."

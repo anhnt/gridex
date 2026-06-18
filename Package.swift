@@ -45,6 +45,8 @@ let package = Package(
             path: "macos",
             exclude: [
                 "Resources/Info.plist",
+                "Resources/AppIcon.icns",
+                "AGENTS.md",
                 "Tests",
             ],
             resources: [

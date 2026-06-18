@@ -9,7 +9,7 @@ protocol MCPTool: Sendable {
     var name: String { get }
     var description: String { get }
     var tier: MCPPermissionTier { get }
-    var inputSchema: [String: Any] { get }
+    var inputSchema: [String: any Sendable] { get }
 
     func execute(params: JSONValue, context: MCPToolContext) async throws -> MCPToolResult
 }

@@ -10,7 +10,7 @@ struct ExplainQueryTool: MCPTool {
     let description = "Get EXPLAIN plan for a query without executing it. Helps AI understand query performance."
     let tier = MCPPermissionTier.read
 
-    let inputSchema: [String: Any] = [
+    let inputSchema: [String: any Sendable] = [
         "type": "object",
         "properties": [
             "connection_id": [

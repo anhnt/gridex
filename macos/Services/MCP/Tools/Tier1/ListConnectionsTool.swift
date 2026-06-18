@@ -10,9 +10,9 @@ struct ListConnectionsTool: MCPTool {
     let description = "List all configured database connections. Returns connection IDs, names, and types (postgres/mysql/sqlite/redis/mongodb/mssql)."
     let tier = MCPPermissionTier.schema
 
-    let inputSchema: [String: Any] = [
+    let inputSchema: [String: any Sendable] = [
         "type": "object",
-        "properties": [:] as [String: Any]
+        "properties": [String: any Sendable]()
     ]
 
     func execute(params: JSONValue, context: MCPToolContext) async throws -> MCPToolResult {

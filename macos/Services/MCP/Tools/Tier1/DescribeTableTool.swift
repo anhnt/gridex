@@ -10,7 +10,7 @@ struct DescribeTableTool: MCPTool {
     let description = "Get detailed structure of a table including columns, data types, indexes, primary keys, foreign keys, and constraints."
     let tier = MCPPermissionTier.schema
 
-    let inputSchema: [String: Any] = [
+    let inputSchema: [String: any Sendable] = [
         "type": "object",
         "properties": [
             "connection_id": [

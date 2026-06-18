@@ -10,7 +10,7 @@ struct GetSampleRowsTool: MCPTool {
     let description = "Get sample rows from a table to help understand data shape. Default limit 10, max 100."
     let tier = MCPPermissionTier.schema
 
-    let inputSchema: [String: Any] = [
+    let inputSchema: [String: any Sendable] = [
         "type": "object",
         "properties": [
             "connection_id": [

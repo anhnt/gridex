@@ -10,7 +10,7 @@ struct UpdateRowsTool: MCPTool {
     let description = "Update rows matching WHERE clause. Requires user approval. WHERE clause is MANDATORY (no bare UPDATE)."
     let tier = MCPPermissionTier.write
 
-    let inputSchema: [String: Any] = [
+    let inputSchema: [String: any Sendable] = [
         "type": "object",
         "properties": [
             "connection_id": [

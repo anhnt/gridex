@@ -6,6 +6,7 @@
 // pinned CA, trust-on-first-use, and mutual TLS via a PKCS#12 bundle.
 
 import Foundation
+@preconcurrency import Security
 
 struct ClickHouseHTTPClient: Sendable {
     let scheme: String                 // "http" or "https"
@@ -109,18 +110,21 @@ struct ClickHouseHTTPClient: Sendable {
             throw GridexError.queryExecutionFailed(body.trimmingCharacters(in: .whitespacesAndNewlines))
         }
 
-        return ClickHouseHTTPResponse(status: http.statusCode, body: data, headers: http.allHeaderFields)
+        let headers = http.allHeaderFields.reduce(into: [String: String]()) {
+            $0["\($1.key)"] = "\($1.value)"
+        }
+        return ClickHouseHTTPResponse(status: http.statusCode, body: data, headers: headers)
     }
 }
 
 struct ClickHouseHTTPResponse: Sendable {
     let status: Int
     let body: Data
-    let headers: [AnyHashable: Any]
+    let headers: [String: String]
 
     /// ClickHouse writes progress as JSON in this response header on mutating statements.
     var summary: [String: String]? {
-        guard let raw = headers["X-ClickHouse-Summary"] as? String,
+        guard let raw = headers["X-ClickHouse-Summary"],
               let data = raw.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: String]
         else { return nil }
@@ -136,7 +140,7 @@ struct ClickHouseHTTPResponse: Sendable {
 
 /// URLSessionDelegate that pins a custom CA and/or presents a client identity.
 /// Gracefully falls back to the system trust store if no CA is provided.
-final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, Sendable {
+final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
     private let useTLS: Bool
     private let caCertificates: [SecCertificate]
     private let clientIdentity: SecIdentity?

@@ -10,7 +10,7 @@ struct ListRelationshipsTool: MCPTool {
     let description = "List foreign key relationships for a table. Returns both incoming and outgoing references."
     let tier = MCPPermissionTier.schema
 
-    let inputSchema: [String: Any] = [
+    let inputSchema: [String: any Sendable] = [
         "type": "object",
         "properties": [
             "connection_id": [

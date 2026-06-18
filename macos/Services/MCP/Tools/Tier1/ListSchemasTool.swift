@@ -10,7 +10,7 @@ struct ListSchemasTool: MCPTool {
     let description = "List schemas/databases available in a connection."
     let tier = MCPPermissionTier.schema
 
-    let inputSchema: [String: Any] = [
+    let inputSchema: [String: any Sendable] = [
         "type": "object",
         "properties": [
             "connection_id": [

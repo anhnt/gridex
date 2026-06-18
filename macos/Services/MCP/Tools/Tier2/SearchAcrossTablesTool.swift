@@ -10,7 +10,7 @@ struct SearchAcrossTablesTool: MCPTool {
     let description = "Search for a keyword across table names, column names, and column comments. Useful for discovering relevant data."
     let tier = MCPPermissionTier.read
 
-    let inputSchema: [String: Any] = [
+    let inputSchema: [String: any Sendable] = [
         "type": "object",
         "properties": [
             "connection_id": [

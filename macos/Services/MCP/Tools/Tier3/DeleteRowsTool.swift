@@ -10,7 +10,7 @@ struct DeleteRowsTool: MCPTool {
     let description = "Delete rows matching WHERE clause. Requires user approval. WHERE clause is MANDATORY."
     let tier = MCPPermissionTier.write
 
-    let inputSchema: [String: Any] = [
+    let inputSchema: [String: any Sendable] = [
         "type": "object",
         "properties": [
             "connection_id": [

@@ -223,10 +223,10 @@ struct MCPToolDefinition: Codable, Sendable {
     let description: String
     let inputSchema: JSONValue
 
-    init(name: String, description: String, inputSchema: [String: Any]) {
+    init(name: String, description: String, inputSchema: [String: any Sendable]) {
         self.name = name
         self.description = description
-        self.inputSchema = Self.convertToJSONValue(inputSchema)
+        self.inputSchema = Self.convertToJSONValue(inputSchema.mapValues { $0 })
     }
 
     private static func convertToJSONValue(_ value: Any) -> JSONValue {

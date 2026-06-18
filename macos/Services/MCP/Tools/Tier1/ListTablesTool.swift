@@ -10,7 +10,7 @@ struct ListTablesTool: MCPTool {
     let description = "List all tables in a database connection. Returns table names, schemas, and approximate row counts."
     let tier = MCPPermissionTier.schema
 
-    let inputSchema: [String: Any] = [
+    let inputSchema: [String: any Sendable] = [
         "type": "object",
         "properties": [
             "connection_id": [

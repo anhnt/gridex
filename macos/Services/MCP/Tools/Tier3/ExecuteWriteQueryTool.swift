@@ -10,7 +10,7 @@ struct ExecuteWriteQueryTool: MCPTool {
     let description = "Execute one write SQL statement (INSERT/UPDATE/DELETE). Requires user approval. Only available in read-write mode. Multi-statement input is rejected."
     let tier = MCPPermissionTier.write
 
-    let inputSchema: [String: Any] = [
+    let inputSchema: [String: any Sendable] = [
         "type": "object",
         "properties": [
             "connection_id": [

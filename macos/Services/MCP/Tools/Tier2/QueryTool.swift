@@ -10,7 +10,7 @@ struct QueryTool: MCPTool {
     let description = "Execute a SQL query. In read-only mode, only SELECT statements are allowed. Returns rows with metadata (column types, row count, execution time)."
     let tier = MCPPermissionTier.read
 
-    let inputSchema: [String: Any] = [
+    let inputSchema: [String: any Sendable] = [
         "type": "object",
         "properties": [
             "connection_id": [

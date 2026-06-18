@@ -10,7 +10,7 @@ struct InsertRowsTool: MCPTool {
     let description = "Insert one or more rows into a table. Requires user approval. Returns affected count."
     let tier = MCPPermissionTier.write
 
-    let inputSchema: [String: Any] = [
+    let inputSchema: [String: any Sendable] = [
         "type": "object",
         "properties": [
             "connection_id": [

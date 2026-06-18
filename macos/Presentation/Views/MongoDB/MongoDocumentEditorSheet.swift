@@ -173,7 +173,7 @@ private struct PlainJSONTextEditor: NSViewRepresentable {
         // NSTextView document view — a failure here would be a system-level bug.
         let textView = scroll.documentView as! NSTextView
 
-        textView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        textView.font = GridexTheme.FontSize.dataGridFont
         textView.textContainerInset = NSSize(width: 8, height: 8)
         textView.disableAutoSubstitutions()
         // NSTextView defaults undo to off; SwiftUI's TextEditor enabled it, so keep parity.

@@ -54,7 +54,7 @@ final class SyntaxHighlighter: NSObject {
     func highlight(_ textStorage: NSTextStorage) {
         let text = textStorage.string
         let fullRange = NSRange(location: 0, length: text.utf16.count)
-        let defaultFont = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+        let defaultFont = GridexTheme.FontSize.sqlEditorFont
 
         textStorage.beginEditing()
         textStorage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: fullRange)
@@ -70,7 +70,7 @@ final class SyntaxHighlighter: NSObject {
 
                 if Self.keywords.contains(upper) {
                     textStorage.addAttribute(.foregroundColor, value: NSColor.Gridex.syntaxKeyword, range: nsRange)
-                    textStorage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 14, weight: .bold), range: nsRange)
+                    textStorage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: defaultFont.pointSize, weight: .bold), range: nsRange)
                 } else if Self.functions.contains(upper) {
                     textStorage.addAttribute(.foregroundColor, value: NSColor.Gridex.syntaxFunction, range: nsRange)
                 }

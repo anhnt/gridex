@@ -8,8 +8,10 @@ import SwiftUI
 
 struct TabBarSwiftUIView: View {
     @EnvironmentObject private var appState: AppState
+    @State private var themeVersion = 0
 
     var body: some View {
+        let _ = themeVersion
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 0) {
                 ForEach(Array(appState.groupedTabs.enumerated()), id: \.offset) { _, section in
@@ -29,7 +31,7 @@ struct TabBarSwiftUIView: View {
                 // [+] new tab button
                 Button(action: { appState.openNewQueryTab() }) {
                     Image(systemName: "plus")
-                        .font(.system(size: 12))
+                        .font(.system(size: GridexTheme.FontSize.ui))
                         .foregroundStyle(.secondary)
                         .frame(width: 36, height: 38)
                 }
@@ -43,6 +45,9 @@ struct TabBarSwiftUIView: View {
         .frame(height: 38)
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay(alignment: .bottom) { Divider() }
+        .onReceive(NotificationCenter.default.publisher(for: .themeDidChange)) { _ in
+            themeVersion += 1
+        }
     }
 }
 
@@ -167,13 +172,13 @@ struct TabItemView: View {
                     isRenaming = false
                 })
                 .textFieldStyle(.plain)
-                .font(.system(size: 12))
+                .font(Font.Theme.ui)
                 .frame(width: 100)
                 .onAppear { renameText = tab.title }
                 .onExitCommand { isRenaming = false }
             } else {
                 Text(tab.title)
-                    .font(.system(size: 12))
+                    .font(Font.Theme.ui)
                     .lineLimit(1)
             }
 

@@ -27,6 +27,7 @@ struct DataGridView: View {
         DataGridContentView(
             tableName: tableName,
             schema: schema,
+            tabId: tabId,
             viewModel: viewModel,
             showDiscardWarning: $showDiscardWarning,
             viewMode: $viewMode
@@ -47,6 +48,7 @@ struct DataGridView: View {
 private struct DataGridContentView: View {
     let tableName: String
     let schema: String?
+    let tabId: UUID
     @ObservedObject var viewModel: DataGridViewState
     @Binding var showDiscardWarning: Bool
     @Binding var viewMode: DataGridViewMode
@@ -164,6 +166,19 @@ private struct DataGridContentView: View {
                 adapter: appState.activeAdapter
             )
         }
+        .onChange(of: tabId) { _, _ in
+            // When SwiftUI reuses the view for a different tab (no .id()),
+            // .task doesn't re-fire. Detect tab change and load data.
+            viewModel.appState = appState
+            guard viewModel.columns.isEmpty else { return }
+            Task {
+                await viewModel.load(
+                    tableName: tableName,
+                    schema: schema,
+                    adapter: appState.activeAdapter
+                )
+            }
+        }
         .onChange(of: viewModel.statusRowCount) { _, count in
             appState.statusRowCount = count
         }
@@ -191,7 +206,8 @@ private struct DataGridContentView: View {
         .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
             Button("OK") { viewModel.dismissError() }
         } message: {
-            Text(viewModel.errorMessage ?? "")
+            let msg = viewModel.errorMessage ?? ""
+            Text(msg)
         }
         // Cmd+S: commit changes
         .onReceive(NotificationCenter.default.publisher(for: .commitChanges)) { _ in
@@ -506,67 +522,87 @@ final class DataGridViewState: ObservableObject {
             return
         }
 
-        let start = Date()
-        async let descTask = adapter.describeTable(name: tableName, schema: schema)
-        async let enumTask: [String: [String]] = {
-            guard adapter.databaseType == .postgresql else { return [:] }
-            let sql = """
-                SELECT a.attname, e.enumlabel
-                FROM pg_attribute a
-                JOIN pg_class cls ON cls.oid = a.attrelid
-                JOIN pg_namespace ns ON ns.oid = cls.relnamespace
-                JOIN pg_type t ON t.oid = a.atttypid
-                JOIN pg_enum e ON e.enumtypid = t.oid
-                WHERE cls.relname = $1 AND ns.nspname = $2
-                  AND a.attnum > 0 AND NOT a.attisdropped
-                ORDER BY a.attname, e.enumsortorder
-                """
-            guard let result = try? await adapter.executeWithRowValues(sql: sql, parameters: [.string(tableName), .string(schemaFilter)]) else { return [:] }
-            var enums: [String: [String]] = [:]
-            for row in result.rows {
-                if let colName = row[0].stringValue, let label = row[1].stringValue {
-                    enums[colName, default: []].append(label)
+        Task { [adapter, tableName, schema, qualifiedTable] in
+            let start = Date()
+            if let desc = try? await adapter.describeTable(name: tableName, schema: schema) {
+                let dur = Date().timeIntervalSince(start)
+                await MainActor.run {
+                    self.primaryKeyColumns = desc.columns.filter { $0.isPrimaryKey }.map { $0.name }
+                    for col in desc.columns {
+                        if let def = col.defaultValue, !col.isAutoIncrement {
+                            self.columnDefaults[col.name] = def
+                        }
+                    }
+                    for fk in desc.foreignKeys {
+                        for (i, col) in fk.columns.enumerated() {
+                            self.foreignKeyColumns[col] = fk.referencedTable
+                            if i < fk.referencedColumns.count {
+                                self.foreignKeyRefColumns[col] = fk.referencedColumns[i]
+                            }
+                        }
+                    }
+                    if let count = desc.estimatedRowCount, count > 0 {
+                        self.totalRows = count
+                    }
+                    self.tableDescription = desc
+                    self.logQuery(sql: "-- describeTable(\(qualifiedTable)) → \(desc.columns.count) cols, \(desc.indexes.count) idx, \(desc.foreignKeys.count) fks", duration: dur)
                 }
-            }
-            return enums
-        }()
 
-        if let desc = try? await descTask {
-            let dur = Date().timeIntervalSince(start)
-            self.primaryKeyColumns = desc.columns.filter { $0.isPrimaryKey }.map { $0.name }
-            for col in desc.columns {
-                if let def = col.defaultValue, !col.isAutoIncrement {
-                    self.columnDefaults[col.name] = def
-                }
-            }
-            for fk in desc.foreignKeys {
-                for (i, col) in fk.columns.enumerated() {
-                    self.foreignKeyColumns[col] = fk.referencedTable
-                    if i < fk.referencedColumns.count {
-                        self.foreignKeyRefColumns[col] = fk.referencedColumns[i]
+                // Batch-fetch enum labels from describeTable result (avoids separate 5-way catalog join)
+                if adapter.databaseType == .postgresql {
+                    var enumTypeToColumns: [String: [String]] = [:]
+                    for col in desc.columns {
+                        let dt = col.dataType
+                        if dt.contains("user-defined") || (!dt.hasPrefix("int") && !dt.hasPrefix("float") && !dt.hasPrefix("bool") && !dt.hasPrefix("text") && !dt.hasPrefix("varchar") && !dt.hasPrefix("char") && !dt.hasPrefix("date") && !dt.hasPrefix("time") && !dt.hasPrefix("timestamp") && !dt.hasPrefix("numeric") && !dt.hasPrefix("decimal") && !dt.hasPrefix("real") && !dt.hasPrefix("double") && !dt.hasPrefix("bytea") && !dt.hasPrefix("json") && !dt.hasPrefix("uuid") && !dt.hasPrefix("serial") && !dt.hasPrefix("ARRAY") && !dt.contains("[]") && dt != "oid" && dt != "cid" && dt != "tid" && dt != "xid" && !dt.contains("interval")) {
+                            enumTypeToColumns[dt, default: []].append(col.name)
+                        }
+                    }
+                    if !enumTypeToColumns.isEmpty {
+                        let typeNames = Array(enumTypeToColumns.keys)
+                        let placeholders = typeNames.enumerated().map { "$\($0.offset + 1)" }.joined(separator: ",")
+                        let sql = """
+                            SELECT t.typname, e.enumlabel
+                            FROM pg_type t
+                            JOIN pg_enum e ON e.enumtypid = t.oid
+                            WHERE t.typname IN (\(placeholders))
+                            ORDER BY t.typname, e.enumsortorder
+                            """
+                        let params = typeNames.map { RowValue.string($0) }
+                        if let result = try? await adapter.executeWithRowValues(sql: sql, parameters: params) {
+                            var typeLabels: [String: [String]] = [:]
+                            for row in result.rows {
+                                if let typeName = row[0].stringValue, let label = row[1].stringValue {
+                                    typeLabels[typeName, default: []].append(label)
+                                }
+                            }
+                            var enums: [String: [String]] = [:]
+                            for (typeName, colNames) in enumTypeToColumns {
+                                if let labels = typeLabels[typeName] {
+                                    for colName in colNames {
+                                        enums[colName] = labels
+                                    }
+                                }
+                            }
+                            await MainActor.run { self.columnEnumValues = enums }
+                        }
                     }
                 }
             }
-            if let count = desc.estimatedRowCount, count > 0 {
-                self.totalRows = count
+
+            // Save to cache
+            await MainActor.run {
+                Self.metadataCache[self.cacheKey] = TableMetadataCache(
+                    primaryKeyColumns: self.primaryKeyColumns,
+                    foreignKeyColumns: self.foreignKeyColumns,
+                    foreignKeyRefColumns: self.foreignKeyRefColumns,
+                    columnDefaults: self.columnDefaults,
+                    columnEnumValues: self.columnEnumValues,
+                    estimatedRowCount: self.totalRows,
+                    tableDescription: self.tableDescription
+                )
+                self.objectWillChange.send()
             }
-            self.tableDescription = desc
-            self.logQuery(sql: "-- describeTable(\(qualifiedTable)) → \(desc.columns.count) cols, \(desc.indexes.count) idx, \(desc.foreignKeys.count) fks", duration: dur)
         }
-
-        self.columnEnumValues = await enumTask
-
-        // Save to cache
-        Self.metadataCache[self.cacheKey] = TableMetadataCache(
-            primaryKeyColumns: self.primaryKeyColumns,
-            foreignKeyColumns: self.foreignKeyColumns,
-            foreignKeyRefColumns: self.foreignKeyRefColumns,
-            columnDefaults: self.columnDefaults,
-            columnEnumValues: self.columnEnumValues,
-            estimatedRowCount: self.totalRows,
-            tableDescription: self.tableDescription
-        )
-        self.objectWillChange.send()
     }
 
     func reloadStructure() async {
@@ -703,9 +739,9 @@ final class DataGridViewState: ObservableObject {
     // MARK: - Column Auto-sizing
 
     private func computeColumnWidths(columns: [ColumnHeader], rows: [[RowValue]]) {
-        let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        let font = GridexTheme.FontSize.dataGridFont
         let attrs: [NSAttributedString.Key: Any] = [.font: font]
-        let headerFont = NSFont.systemFont(ofSize: 12, weight: .medium)
+        let headerFont = NSFont.systemFont(ofSize: font.pointSize, weight: .medium)
         let headerAttrs: [NSAttributedString.Key: Any] = [.font: headerFont]
 
         for (colIdx, col) in columns.enumerated() {
@@ -1178,7 +1214,7 @@ struct DataGridRow: View {
     @State private var lastClickedCol: Int = -1
     @State private var lastClickTime: Date = .distantPast
 
-    private static let cellFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+    private static var cellFont: NSFont { GridexTheme.FontSize.dataGridFont }
     private static let separatorColor = Color(nsColor: .separatorColor)
     private static let altRowColor = Color(nsColor: .alternatingContentBackgroundColors.last ?? .controlBackgroundColor)
     private static let bgColor = Color(nsColor: .textBackgroundColor)
@@ -1266,7 +1302,7 @@ struct CellTextField: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSTextField {
         let field = NSTextField(string: initialValue)
-        field.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        field.font = GridexTheme.FontSize.dataGridFont
         field.isBordered = true
         field.bezelStyle = .squareBezel
         field.focusRingType = .none

@@ -255,14 +255,15 @@ private final class CompletionRowView: NSView {
     }
 
     private func highlightedText(for item: CompletionItem) -> NSAttributedString {
+        let baseFont = GridexTheme.FontSize.dataGridFont
         let str = NSMutableAttributedString(
             string: item.text,
             attributes: [
-                .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+                .font: baseFont,
                 .foregroundColor: NSColor.labelColor
             ]
         )
-        let boldFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .bold)
+        let boldFont = NSFont.monospacedSystemFont(ofSize: baseFont.pointSize, weight: .bold)
         for charIndex in item.matchRanges {
             guard charIndex < item.text.count else { continue }
             let nsRange = NSRange(location: charIndex, length: 1)

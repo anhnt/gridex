@@ -26,9 +26,20 @@ final class SQLTextView: NSTextView {
     }
 
     private func commonInit() {
-        font = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+        font = GridexTheme.FontSize.sqlEditorFont
         textContainerInset = NSSize(width: 12, height: 8)
         disableAutoSubstitutions()
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(themeDidChange),
+            name: .themeDidChange,
+            object: nil
+        )
+    }
+
+    @objc private func themeDidChange() {
+        font = GridexTheme.FontSize.sqlEditorFont
     }
 
     override func keyDown(with event: NSEvent) {

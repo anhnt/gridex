@@ -58,7 +58,11 @@ struct AppKitDataGrid: NSViewRepresentable {
         context.coordinator.tableView = tableView
         context.coordinator.onSelectRows = onSelectRows
         tableView.gridCoordinator = context.coordinator
-        context.coordinator.bind(to: viewModel)
+        // Defer bind to next runloop so the view hierarchy renders first
+        // (sidebar highlight, tab bar update appear immediately)
+        DispatchQueue.main.async { [viewModel] in
+            context.coordinator.bind(to: viewModel)
+        }
 
         return scrollView
     }
@@ -66,6 +70,17 @@ struct AppKitDataGrid: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.onSelectRows = onSelectRows
         context.coordinator.onFKClick = onFKClick
+        // Rebind if viewModel changed (tab switch without .id() recreation)
+        let newId = ObjectIdentifier(viewModel)
+        if context.coordinator.boundViewModelId != newId {
+            // Defer bind so current render pass completes first
+            DispatchQueue.main.async { [viewModel] in
+                context.coordinator.bind(to: viewModel)
+                if let tableView = context.coordinator.tableView {
+                    tableView.reloadData()
+                }
+            }
+        }
     }
 
     func makeCoordinator() -> Coordinator {
@@ -91,6 +106,7 @@ struct AppKitDataGrid: NSViewRepresentable {
         private(set) var columnEnumValues: [String: [String]] = [:]
 
         private weak var viewModel: DataGridViewState?
+        var boundViewModelId: ObjectIdentifier?
         private var cancellables = Set<AnyCancellable>()
         private var isUpdating = false
         private var isEditing = false
@@ -104,6 +120,20 @@ struct AppKitDataGrid: NSViewRepresentable {
         private var columnNameToIndex: [String: Int] = [:]
         private var dateColumnIndices: Set<Int> = []
         private var boolColumnIndices: Set<Int> = []
+
+        override init() {
+            super.init()
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(themeDidChange),
+                name: .themeDidChange,
+                object: nil
+            )
+        }
+
+        @objc private func themeDidChange() {
+            tableView?.reloadData()
+        }
 
         private func rebuildPendingChangeCaches() {
             deletedRows = []
@@ -135,24 +165,27 @@ struct AppKitDataGrid: NSViewRepresentable {
             }
         }
 
-        static let cellFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        static let nullFont: NSFont = {
+        static var cellFont: NSFont { GridexTheme.FontSize.dataGridFont }
+        static var nullFont: NSFont {
             let descriptor = cellFont.fontDescriptor.withSymbolicTraits(.italic)
-            return NSFont(descriptor: descriptor, size: 12) ?? cellFont
-        }()
+            return NSFont(descriptor: descriptor, size: cellFont.pointSize) ?? cellFont
+        }
 
         // MARK: - ViewModel Binding
 
         nonisolated func bind(to viewModel: DataGridViewState) {
             MainActor.assumeIsolated {
                 self.viewModel = viewModel
+                self.boundViewModelId = ObjectIdentifier(viewModel)
                 self.cancellables.removeAll()
                 self.snapshotFromViewModel()
                 self.rebuildColumns()
+                // Show data immediately — don't wait for 16ms Combine debounce
+                self.tableView?.reloadData()
 
                 viewModel.objectWillChange
                     .receive(on: RunLoop.main)
-                    .debounce(for: .milliseconds(100), scheduler: RunLoop.main)
+                    .debounce(for: .milliseconds(16), scheduler: RunLoop.main)
                     .sink { [weak self, weak viewModel] _ in
                         MainActor.assumeIsolated {
                             guard viewModel != nil else { return }

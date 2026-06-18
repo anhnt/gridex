@@ -13,6 +13,11 @@ struct SettingsView: View {
                     Label("General", systemImage: "gear")
                 }
 
+            AppearanceSettingsView()
+                .tabItem {
+                    Label("Appearance", systemImage: "paintbrush")
+                }
+
             AISettingsView()
                 .tabItem {
                     Label("AI", systemImage: "brain")
@@ -74,6 +79,96 @@ struct GeneralSettingsView: View {
                 MCPStatusBarController.shared.refresh()
             }
         }
+    }
+}
+
+struct AppearanceSettingsView: View {
+    @AppStorage("theme.fontSize.dataGrid") private var dataGridFontSize: Double = 14
+    @AppStorage("theme.fontSize.sqlEditor") private var sqlEditorFontSize: Double = 16
+    @AppStorage("theme.fontSize.sidebar") private var sidebarFontSize: Double = 13
+    @AppStorage("theme.fontSize.UI") private var uiFontSize: Double = 12
+    
+    var body: some View {
+        Form {
+            Section("Font Sizes") {
+                HStack {
+                    Text("Data Grid")
+                    Spacer()
+                    Slider(value: $dataGridFontSize, in: 10...20, step: 1)
+                        .frame(width: 200)
+                        .onChange(of: dataGridFontSize) { _, _ in GridexTheme.notifyChange() }
+                    Text("\(Int(dataGridFontSize))pt")
+                        .frame(width: 40)
+                        .monospacedDigit()
+                }
+                
+                HStack {
+                    Text("SQL Editor")
+                    Spacer()
+                    Slider(value: $sqlEditorFontSize, in: 10...24, step: 1)
+                        .frame(width: 200)
+                        .onChange(of: sqlEditorFontSize) { _, _ in GridexTheme.notifyChange() }
+                    Text("\(Int(sqlEditorFontSize))pt")
+                        .frame(width: 40)
+                        .monospacedDigit()
+                }
+                
+                HStack {
+                    Text("Sidebar")
+                    Spacer()
+                    Slider(value: $sidebarFontSize, in: 10...16, step: 1)
+                        .frame(width: 200)
+                        .onChange(of: sidebarFontSize) { _, _ in GridexTheme.notifyChange() }
+                    Text("\(Int(sidebarFontSize))pt")
+                        .frame(width: 40)
+                        .monospacedDigit()
+                }
+                
+                HStack {
+                    Text("UI Elements")
+                    Spacer()
+                    Slider(value: $uiFontSize, in: 10...16, step: 1)
+                        .frame(width: 200)
+                        .onChange(of: uiFontSize) { _, _ in GridexTheme.notifyChange() }
+                    Text("\(Int(uiFontSize))pt")
+                        .frame(width: 40)
+                        .monospacedDigit()
+                }
+            }
+            
+            Section("Preview") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Data Grid Preview")
+                        .font(.system(size: dataGridFontSize, design: .monospaced))
+                        .foregroundStyle(.primary)
+                    
+                    Text("SELECT * FROM users WHERE id = 1")
+                        .font(.system(size: sqlEditorFontSize, design: .monospaced))
+                        .foregroundStyle(.primary)
+                    
+                    Text("Sidebar Item")
+                        .font(.system(size: sidebarFontSize))
+                        .foregroundStyle(.primary)
+                    
+                    Text("Button Label")
+                        .font(.system(size: uiFontSize))
+                        .foregroundStyle(.primary)
+                }
+                .padding(.vertical, 8)
+            }
+            
+            Section {
+                Button("Reset to Defaults") {
+                    dataGridFontSize = 14
+                    sqlEditorFontSize = 16
+                    sidebarFontSize = 13
+                    uiFontSize = 12
+                    GridexTheme.notifyChange()
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

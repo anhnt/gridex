@@ -30,8 +30,10 @@ struct SidebarView: View {
     @State private var selectedSchema = "public"
     @State private var showNewTableSheet = false
     @State private var deleteErrorMessage: String?
+    @State private var themeVersion = 0
 
     var body: some View {
+        let _ = themeVersion
         VStack(spacing: 0) {
             tabBar
             Divider()
@@ -52,6 +54,9 @@ struct SidebarView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(deleteErrorMessage ?? "")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .themeDidChange)) { _ in
+            themeVersion += 1
         }
     }
 
@@ -182,12 +187,12 @@ struct SidebarView: View {
     private var searchBar: some View {
         HStack(spacing: 5) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 11))
+                .font(.system(size: GridexTheme.FontSize.sidebar - 2))
                 .foregroundStyle(.tertiary)
 
             TextField("Search for item...", text: $searchText)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12))
+                .font(Font.Theme.sidebar)
 
             if searchText.isEmpty {
                 Button {
@@ -215,7 +220,7 @@ struct SidebarView: View {
             // Backup
             Button { BackupRestorePanel.openBackup(appState: appState) } label: {
                 Image(systemName: "arrow.up.doc")
-                    .font(.system(size: 12))
+                    .font(.system(size: GridexTheme.FontSize.ui))
                     .frame(width: 28, height: 22)
             }
             .buttonStyle(.plain)
@@ -224,7 +229,7 @@ struct SidebarView: View {
             // Restore
             Button { BackupRestorePanel.openRestore(appState: appState) } label: {
                 Image(systemName: "arrow.down.doc")
-                    .font(.system(size: 12))
+                    .font(.system(size: GridexTheme.FontSize.ui))
                     .frame(width: 28, height: 22)
             }
             .buttonStyle(.plain)
@@ -237,7 +242,7 @@ struct SidebarView: View {
             }
             .labelsHidden()
             .pickerStyle(.menu)
-            .font(.system(size: 12))
+            .font(Font.Theme.ui)
             .frame(width: 80)
         }
         .padding(.horizontal, 6)
@@ -252,7 +257,7 @@ struct SidebarView: View {
                 .font(.system(size: 28))
                 .foregroundStyle(.quaternary)
             Text(label)
-                .font(.system(size: 12))
+                .font(Font.Theme.sidebar)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -317,7 +322,7 @@ struct SidebarItemRow: View {
         return HStack(spacing: 6) {
             tableIcon
             Text(item.title)
-                .font(.system(size: 12))
+                .font(Font.Theme.sidebar)
                 .lineLimit(1)
                 .strikethrough(isPendingDelete)
                 .foregroundStyle(
@@ -837,15 +842,15 @@ struct NewTableSheet: View {
             // Form
             Grid(alignment: .trailing, horizontalSpacing: 10, verticalSpacing: 10) {
                 GridRow {
-                    Text("Name:").font(.system(size: 12))
+                    Text("Name:").font(Font.Theme.ui)
                     TextField("", text: $tableName)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 220)
                 }
                 GridRow {
-                    Text("Schema:").font(.system(size: 12))
+                    Text("Schema:").font(Font.Theme.ui)
                     Text(schema)
-                        .font(.system(size: 12))
+                        .font(Font.Theme.ui)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
